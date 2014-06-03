@@ -543,17 +543,103 @@ mount SenderService, :at => '/internal_api'
 
 ---
 
-# Sequel
+# Sequel FTW!
+
+
+
+---
+
+# Репозитории
+
+```ruby
+def find(id)
+  to_remove = [:gender_id, :vk, :online_profile_status_id, :picture_id, :picture_to_approve_id]
+  to_add = [:gender__name___gender,
+  :vk___description, :online_profile_status__name___status,
+  :online_profile_status__is_online___is_online, :picture_id___image_id]
+
+  dataset = table.join(:online_profile_status, id: :online_profile_status_id)
+                 .join(:gender, id: :profile__gender_id)
+                 .se lect_all(:profile)
+                 .select_append(*to_add)
+                 .where(profile__id: id)
+
+  all = dataset.all.map do |record|
+    attrs = record.delete_if{|d| to_remove.include? d}
+    Profile.new(attrs)
+  end
+
+  all.size > 1 ? all : all.first
+end
+```
+---
+
+# Репозитории
+
+```ruby
+def persist(profile)
+      status_id = DB[:online_profile_status].select(:id).where(name: profile.status).get(:id)
+      raise UnknownProperty.new(:status) unless status_id
+
+      gender_id = DB[:gender].select(:id).where(name: profile.gender).get(:id)
+      raise UnknownProperty.new(:gender) unless gender_id
+
+      hash = { username: profile.username, vk: profile.description,
+               age: profile.age, user_id: profile.user_id,
+               deleted: profile.deleted, online_profile_status_id: status_id, gender_id: gender_id,
+               picture_id: profile.image_id
+             }
+
+      if profile.new_record?
+        dates = { date_created: Time.now.utc,
+                  last_updated: Time.now.utc }
+        profile.id = table.insert(hash.merge! dates)
+      else
+        table.where(id: profile.id).update(hash)
+      end
+    end
+```
+---
+
+```ruby
+class Profile < Entity
+  attribute :id, Integer
+  attribute :user_id, Integer
+  attribute :username, String
+  attribute :age, Integer
+  attribute :description, String
+  attribute :deleted, Bitfield, default: false
+  attribute :is_online, Bitfield, default: false
+
+  attribute :gender, String
+  attribute :status, String, default: 'alwaysOffline'
+
+  attribute :image_id, Integer
+  attribute :image, 'Image'
+  # attribute :visibility,
+
+  def online_desire
+    ...
+  end
+end
+```
 
 ---
 
 # Good
 
 * получилось сделать слой репозиториев
-*
+* весь трэш текущей структуры данных остался в этом же слое
+* инпуты вместо разных валиадций в моделях
+* true PORO
+* избавились от рельсового оверхэда
+
 
 ---
 
 # Not so good
 
-* сделать отдельный адаптер для in-memory хранения данных
+* не получилось сделать отдельный адаптер для in-memory хранения данных
+* тестировать стало совсем скучно :)
+* потеряли немного рельсовой инфраструктуры
+*
